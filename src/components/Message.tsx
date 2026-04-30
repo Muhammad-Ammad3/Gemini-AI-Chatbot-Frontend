@@ -120,7 +120,7 @@ export default function Message({ message }: { message: any }) {
           >
             <ReactMarkdown
               components={{
-                code({ inline, className, children, ...props }) {
+                code({ inline, className, children, ...props }: any) {
                   const match = /language-(\w+)/.exec(className || "");
                   return !inline && match ? (
                     <div className="my-2 md:my-3 rounded-lg md:rounded-xl overflow-hidden border border-white/10 text-[11px] md:text-sm shadow-2xl">
@@ -139,6 +139,7 @@ export default function Message({ message }: { message: any }) {
                     </div>
                   ) : (
                     <code
+                      {...props} 
                       className={`${
                         isAI
                           ? "bg-[#080816]/50 text-[#827DBE]"
