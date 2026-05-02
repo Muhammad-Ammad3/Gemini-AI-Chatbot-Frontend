@@ -1,197 +1,313 @@
-import { useState, useRef, useEffect } from "react";
-import { useUser } from "@clerk/clerk-react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Mic, Send, Loader2, MicOff, Brain } from "lucide-react";
-import Message from "./Message";
+import { useState, useEffect, useRef } from "react";
 import { api } from "../lib/api";
-import message from "../assets/message.png";
+import { 
+  Send,  
+  Loader2, 
+  Mic, 
+  Volume2, 
+  Copy, 
+  Check, 
+  HelpCircle, 
+  Edit3, 
+  Settings 
+} from "lucide-react";
 import person from "../assets/person.png";
 
-export default function Chat() {
-  const { user } = useUser();
-  const [input, setInput] = useState("");
-  const [isListening, setIsListening] = useState(false);
-  const [isStreaming, setIsStreaming] = useState(false);
-  const queryClient = useQueryClient();
-  const scrollRef = useRef<HTMLDivElement>(null);
+interface Message {
+  chatId: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt?: string;
+}
 
-  const { data: messages = [], isLoading } = useQuery({
-    queryKey: ["messages", user?.id],
-    queryFn: () => api.getMessages(user!.id!),
-    enabled: !!user?.id,
-  });
+interface ChatProps {
+  chatId: string;
+  userId: string;
+}
+
+export default function Chat({ chatId, userId }: ChatProps) {
+  const [input, setInput] = useState("");
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTo({
-        top: scrollRef.current.scrollHeight,
-        behavior: "smooth",
-      });
+    const fetchMessages = async () => {
+      try {
+        const allMessages = await api.getMessages(userId);
+        const currentChatMessages = allMessages.filter(
+          (msg: any) => msg.chatId === chatId,
+        );
+        setMessages(currentChatMessages);
+      } catch (error) {
+        console.error("Error fetching messages:", error);
+        setMessages([]);
+      }
+    };
+
+    if (userId) {
+      fetchMessages();
     }
+  }, [chatId, userId]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   const startListening = () => {
     const SpeechRecognition =
       (window as any).SpeechRecognition ||
       (window as any).webkitSpeechRecognition;
+
     if (!SpeechRecognition) {
-      alert("Please use Chrome for voice features.");
+      alert("Aapka browser voice input/speech recognition support nahi karta.");
       return;
     }
+
     const recognition = new SpeechRecognition();
     recognition.lang = "en-US";
-    recognition.onstart = () => setIsListening(true);
+    recognition.start();
+    setIsListening(true);
+
     recognition.onresult = (event: any) => {
-      setInput(event.results[0][0].transcript);
+      const text = event.results[0][0].transcript;
+      setInput(text);
       setIsListening(false);
     };
-    recognition.onerror = () => setIsListening(false);
-    recognition.onend = () => setIsListening(false);
-    recognition.start();
+
+    recognition.onerror = () => {
+      setIsListening(false);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
   };
 
-  const sendMutation = useMutation({
-    mutationFn: async (content: string) => {
-      await api.sendMessage(user!.id!, "user", content);
-      let fullAIContent = "";
-      setIsStreaming(true);
-      await api.getAIStream(user!.id!, content, (chunk) => {
-        fullAIContent = chunk;
-      });
-      setIsStreaming(false);
-      return fullAIContent;
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["messages", user?.id] });
-    },
-  });
+  const speakText = (text: string) => {
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      window.speechSynthesis.speak(utterance);
+    } else {
+      alert("Aapka browser voice output support nahi karta.");
+    }
+  };
 
-  const handleSend = () => {
-    if (!input.trim() || sendMutation.isPending) return;
-    sendMutation.mutate(input);
+  const copyToClipboard = async (text: string, index: number) => {
+    if (navigator.clipboard) {
+      await navigator.clipboard.writeText(text);
+      setCopiedIndex(index); 
+
+      setTimeout(() => {
+        setCopiedIndex(null);
+      }, 2000);
+    } else {
+      console.error("Clipboard API not supported");
+    }
+  };
+
+  const handleSend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim() || isLoading) return;
+
+    const userMessage: Message = {
+      chatId,
+      role: "user",
+      content: input,
+      createdAt: new Date().toISOString(),
+    };
+
+    setMessages((prev) => [...prev, userMessage]);
     setInput("");
+    setIsLoading(true);
+
+    try {
+      let assistantContent = "";
+      setMessages((prev) => [
+        ...prev,
+        { chatId, role: "assistant", content: "..." },
+      ]);
+
+      await api.getAIStream(userId, userMessage.content, chatId, (text) => {
+        assistantContent = text;
+        setMessages((prev) => {
+          const updated = [...prev];
+          updated[updated.length - 1] = {
+            chatId,
+            role: "assistant",
+            content: assistantContent,
+          };
+          return updated;
+        });
+      });
+
+      await api.sendMessage(userId, "user", userMessage.content);
+    } catch (error) {
+      console.error("Stream failed:", error);
+      setMessages((prev) => {
+        const updated = [...prev];
+        updated[updated.length - 1] = {
+          chatId,
+          role: "assistant",
+          content: "Oops! Error generating response. Please try again.",
+        };
+        return updated;
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
-    <div className="h-dvh flex flex-col bg-[#080816] text-[#D1C4CE] w-full max-w-6xl mx-auto border-x border-white/5 overflow-hidden relative">
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute -top-12 -left-12 md:-top-24 md:-left-24 w-64 h-64 md:w-96 md:h-96 bg-[#5654A6]/10 rounded-full blur-[80px] md:blur-[100px]"></div>
-        <div className="absolute -bottom-12 -right-12 md:-bottom-24 md:-right-24 w-64 h-64 md:w-96 md:h-96 bg-[#827DBE]/10 rounded-full blur-[80px] md:blur-[100px]"></div>
-      </div>
-
-      {/* Header */}
-      <header className="p-4 md:p-5 border-b border-white/5 backdrop-blur-md bg-[#080816]/60 sticky top-0 z-20 flex items-center justify-between">
-        <div className="flex items-center gap-3 md:gap-4">
-          <div className="w-10 h-10 md:w-12 md:h-12 bg-linear-to-tr] rounded-xl flex items-center justify-center shadow-lg">
-            <img src={message} alt="" className="w-11 h-11" />
-          </div>
-          <div>
-            <h1 className="text-lg md:text-xl font-bold tracking-tight text-white">
-              Gemini Pro
-            </h1>
-            <div className="flex items-center gap-1.5 md:gap-2">
-              <span className="w-1.5 h-1.5 md:w-2 md:h-2 bg-green-700 rounded-full animate-pulse"></span>
-              <span className="text-[9px] md:text-[10px] text-[#D1C4CE]/60 uppercase font-bold tracking-widest">
-                Online Actively
-              </span>
+    <div className="flex-1 h-full bg-[#0F0E26] dark:bg-[#0F0E26] flex flex-col justify-between p-3 md:p-6 transition-colors duration-300 text-zinc-800 dark:text-[#D1C4CE]">
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto mb-4 space-y-4 pr-2">
+        {messages.length === 0 ? (
+          <div className="flex-1 flex flex-col items-center justify-center text-center px-2 py-4 md:px-4 min-h-[60vh] md:h-full">
+            {/* Glowing Icon Section */}
+            <div className="relative mb-3 md:mb-6 shrink-0">
+              <div className="absolute inset-0 bg-[#7974c3]/30 blur-2xl rounded-full"></div>
+              <div className="w-14 h-14 md:w-20 md:h-20 bg-linear-to-tr  rounded-2xl flex items-center justify-center text-white shadow-2xl relative">
+                <img src={person} alt="Person" className="text-white animate-pulse" />
+              </div>
             </div>
-          </div>
-        </div>
 
-        <div className="relative group">
-          <div className="h-10 w-10 md:h-11 md:w-11 rounded-full p-0.5 bg-linear-to-tr from-[#827DBE] to-[#5654A6]">
-            <div className="h-full w-full rounded-full bg-[#080816] flex items-center justify-center overflow-hidden">
-              <img
-                src={person}
-                alt="AI Avatar"
-                className="w-full h-full object-cover scale-110"
-              />
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Chat Messages */}
-      <div
-        ref={scrollRef}
-        className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 md:space-y-6 scrollbar-hide"
-      >
-        {isLoading ? (
-          <div className="flex flex-col items-center justify-center h-full opacity-50">
-            <Loader2 className="w-6 h-6 md:w-8 md:h-8 animate-spin text-[#827DBE] mb-2" />
-            <p className="text-xs md:text-sm font-medium text-[#D1C4CE]/60">
-              Syncing with Core...
-            </p>
-          </div>
-        ) : messages.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-center opacity-40 px-4">
-            <Brain className="w-12 h-12 md:w-16 md:h-16 mb-4 text-[#5654A6]" />
-            <h2 className="text-lg md:text-xl font-semibold text-[#D1C4CE]">
-              Workspace Ready
+            {/* Title and Subtitle */}
+            <h2 className="text-lg sm:text-xl md:text-3xl font-bold text-white mb-2 tracking-tight">
+              AI Gemini Chatbot
             </h2>
-            <p className="text-xs md:text-sm max-w-62.5 md:max-w-xs mt-2 text-[#D1C4CE]/60">
-              Send a message to initialize AI memory.
+            <p className="text-[#7974c3] mb-6 md:mb-12 max-w-lg font-medium text-xs md:text-base px-2">
+              Complete your half-formed queries.
             </p>
+
+            {/* Feature Cards Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 md:gap-6 max-w-4xl w-full px-2">
+              {/* Card 1 */}
+              <div className="bg-[#1C1B3A]/80 border border-white/10 rounded-2xl p-3 md:p-6 flex flex-col items-center text-center hover:border-[#7974c3]/50 transition-all duration-300 group hover:shadow-[0_8px_30px_rgba(121,116,195,0.1)] backdrop-blur-sm">
+                <div className="p-2.5 bg-[#7974c3]/20 rounded-xl text-[#7974c3] mb-2 md:mb-4 group-hover:scale-110 transition-transform duration-300">
+                  <HelpCircle size={22} />
+                </div>
+                <h3 className="text-white font-semibold text-xs md:text-base mb-1 md:mb-2">Ask Gemini Anything</h3>
+                <p className="text-[10px] md:text-xs text-[#D1C4CE]/60 leading-relaxed">
+                  From complex queries to simple explanations.
+                </p>
+              </div>
+
+              {/* Card 2 */}
+              <div className="bg-[#1C1B3A]/80 border border-white/10 rounded-2xl p-3 md:p-6 flex flex-col items-center text-center hover:border-[#7974c3]/50 transition-all duration-300 group hover:shadow-[0_8px_30px_rgba(121,116,195,0.1)] backdrop-blur-sm">
+                <div className="p-2.5 bg-[#7974c3]/20 rounded-xl text-[#7974c3] mb-2 md:mb-4 group-hover:scale-110 transition-transform duration-300">
+                  <Edit3 size={22} />
+                </div>
+                <h3 className="text-white font-semibold text-xs md:text-base mb-1 md:mb-2">Creative Writing Partner</h3>
+                <p className="text-[10px] md:text-xs text-[#D1C4CE]/60 leading-relaxed">
+                  Creative writing or chat explanations.
+                </p>
+              </div>
+
+              {/* Card 3 */}
+              <div className="bg-[#1C1B3A]/80 border border-white/10 rounded-2xl p-3 md:p-6 flex flex-col items-center text-center hover:border-[#7974c3]/50 transition-all duration-300 group hover:shadow-[0_8px_30px_rgba(121,116,195,0.1)] backdrop-blur-sm sm:col-span-2 md:col-span-1">
+                <div className="p-2.5 bg-[#7974c3]/20 rounded-xl text-[#7974c3] mb-2 md:mb-4 group-hover:scale-110 transition-transform duration-300">
+                  <Settings size={22} />
+                </div>
+                <h3 className="text-white font-semibold text-xs md:text-base mb-1 md:mb-2">Quick Solutions</h3>
+                <p className="text-[10px] md:text-xs text-[#D1C4CE]/60 leading-relaxed">
+                  Easir to quick solutions and various solutions.
+                </p>
+              </div>
+            </div>
           </div>
         ) : (
-          <>
-            {messages.map((msg: any) => (
-              <Message key={msg._id} message={msg} />
-            ))}
+          messages.map((msg, index) => (
+            <div
+              key={index}
+              className={`flex gap-3 md:gap-4 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+            >
+              <div
+                className={`max-w-[85%] md:max-w-[75%] p-3 md:p-5 rounded-2xl backdrop-blur-sm transition-all ${
+                  msg.role === "user"
+                    ? "bg-linear-to-r from-[#7974c3] to-[#5952a3] text-white shadow-[0_4px_20px_rgba(121,116,195,0.3)]"
+                    : "bg-[#1C1B3A] border border-white/5 text-[#D1C4CE] shadow-[0_4px_25px_rgba(0,0,0,0.2)]"
+                }`}
+              >
+                <p className="text-xs md:text-sm leading-relaxed whitespace-pre-wrap">
+                  {msg.content}
+                </p>
 
-            {isStreaming && (
-              <div className="flex items-center gap-2 px-4 py-2 animate-pulse">
-                <Loader2 className="w-4 h-4 animate-spin text-[#827DBE]" />
-                <span className="text-xs text-[#D1C4CE]/50 font-medium">
-                  Ai is thinking...
-                </span>
+                <div className="flex items-center gap-2 mt-2 md:mt-3 text-xs">
+                  {/* Copy Button */}
+                  <button
+                    onClick={() => copyToClipboard(msg.content, index)}
+                    className="p-1.5 rounded-lg hover:bg-zinc-100/10 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                  >
+                    {copiedIndex === index ? (
+                      <Check size={13} className="text-green-400" />
+                    ) : (
+                      <Copy size={13} className="text-zinc-400" />
+                    )}
+                  </button>
+                  
+                  {/* Voice Output Button for Assistant */}
+                  {msg.role === "assistant" && msg.content !== "..." && (
+                    <button
+                      onClick={() => speakText(msg.content)}
+                      className="flex items-center gap-1 px-2 py-0.5 rounded-lg border border-zinc-300/10 dark:border-white/10 bg-zinc-200/5 dark:bg-white/5 hover:bg-zinc-300/10 dark:hover:bg-white/10 transition-all text-zinc-300 cursor-pointer"
+                      title="Sunain"
+                    >
+                      <Volume2 size={11} />
+                    </button>
+                  )}
+                </div>
               </div>
-            )}
-          </>
+            </div>
+          ))
         )}
+        <div ref={messagesEndRef} />
       </div>
 
-      {/* Footer / Input Area */}
-      <footer className="p-4 md:p-6 bg-linear-to-t from-[#080816] to-transparent">
-        <div className="max-w-4xl mx-auto w-full">
-          <div className="relative flex items-center gap-2 md:gap-3 bg-[#3C3B5E]/30 backdrop-blur-xl border border-white/10 p-1.5 md:p-2 rounded-2xl md:rounded-4xl focus-within:border-[#827DBE]/50 transition-all shadow-2xl">
-            <button
-              onClick={startListening}
-              className={`p-2.5 md:p-3 rounded-full transition-all ${isListening ? "bg-[#7974c3] animate-pulse" : "hover:bg-white/5 text-[#D1C4CE]/60"}`}
-            >
-              {isListening ? (
-                <MicOff className="w-4 h-4 md:w-5 md:h-5 text-white" />
-              ) : (
-                <Mic className="w-4 h-4 md:w-5 md:h-5" />
-              )}
-            </button>
+      {/* Input area */}
+      <form
+        onSubmit={handleSend}
+        className="bg-[#1C1B3A] border border-[#7974c3]/30 rounded-2xl md:rounded-3xl p-2 md:p-3 flex items-center gap-2 md:gap-3 shadow-[0_0_20px_rgba(121,116,195,0.15)] focus-within:border-[#7974c3]/60 transition-all duration-300"
+      >
+        {/* Voice Input Button */}
+        <button
+          type="button"
+          onClick={startListening}
+          className={`p-2 rounded-xl md:rounded-2xl transition-all cursor-pointer ${
+            isListening
+              ? "bg-red-500 text-white animate-pulse"
+              : "bg-[#7974c3]/20 text-[#7974c3] hover:bg-[#7974c3]/30 hover:text-white"
+          }`}
+          title="Voice Input"
+        >
+          <Mic size={15} />
+        </button>
 
-            <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSend()}
-              placeholder={isListening ? "Listening..." : "Message Gemini..."}
-              className="flex-1 bg-transparent border-none focus:ring-0 text-sm md:text-base py-2 outline-none text-[#D1C4CE] placeholder:text-[#D1C4CE]/30"
-            />
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder="Ask Gemini AI anything..."
+          className="flex-1 bg-transparent border-none py-1.5 md:py-2 px-2 md:px-3 text-xs md:text-sm focus:outline-none text-white placeholder:text-[#D1C4CE]/30"
+          disabled={isLoading}
+        />
 
-            <button
-              onClick={handleSend}
-              disabled={!input.trim() || sendMutation.isPending || isStreaming}
-              className="p-2.5 md:p-3 bg-[#7974c3] text-white rounded-full disabled:opacity-20 hover:shadow-[0_0_15px_rgba(201,109,80,0.4)] transition-all active:scale-95 shadow-lg"
-            >
-              {sendMutation.isPending || isStreaming ? (
-                <Loader2 className="w-4 h-4 md:w-5 md:h-5 animate-spin" />
-              ) : (
-                <Send className="w-4 h-4 md:w-5 md:h-5" />
-              )}
-            </button>
-          </div>
-
-          <p className="text-center text-[8px] md:text-[10px] text-[#D1C4CE]/30 mt-3 md:mt-4 uppercase tracking-[0.2em] font-bold">
-            Powered by Gemini AI • 2.5 Flash End to End Encrypted!
-          </p>
-        </div>
-      </footer>
+        <button
+          type="submit"
+          className="p-2 bg-[#7974c3] hover:bg-[#6964b3] text-white rounded-xl md:rounded-2xl transition-all cursor-pointer shadow-md disabled:opacity-40"
+          disabled={isLoading}
+        >
+          {isLoading ? (
+            <Loader2 size={15} className="animate-spin" />
+          ) : (
+            <Send size={15} />
+          )}
+        </button>
+      </form>
     </div>
   );
 }

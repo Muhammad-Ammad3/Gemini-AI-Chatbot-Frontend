@@ -3,14 +3,65 @@ import {
   SignedOut,
   SignInButton,
   UserButton,
+  useUser,
 } from "@clerk/clerk-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import Sidebar from "./components/Sidebar";
 import Chat from "./components/Chat";
-import { MessageCircle, Zap, ArrowRight } from "lucide-react";
+import { MessageCircle, Zap, ArrowRight, LoaderCircleIcon } from "lucide-react";
 import chat from "./assets/chat.png";
 
 function App() {
+  const { user, isLoaded } = useUser();
+  const queryClient = useQueryClient();
+  const [isDarkMode, setIsDarkMode] = useState(false);
+
+  const [chatId, setChatId] = useState(() => {
+    return localStorage.getItem("selectedChatId") || crypto.randomUUID();
+  });
+
+  useEffect(() => {
+    if (chatId) {
+      localStorage.setItem("selectedChatId", chatId);
+    } else {
+      localStorage.removeItem("selectedChatId");
+    }
+  }, [chatId]);
+
+  useEffect(() => {
+    const root = window.document.documentElement;
+    if (isDarkMode) {
+      root.classList.add("dark");
+    } else {
+      root.classList.remove("dark");
+    }
+  }, [isDarkMode]);
+
+  const handleNewChat = () => {
+    const newChatId = crypto.randomUUID();
+    setChatId(newChatId);
+    if (user?.id) {
+      queryClient.invalidateQueries({ queryKey: ["messages", user.id] });
+    }
+  };
+
+  const handleSelectChat = (selectedChatId: string) => {
+    setChatId(selectedChatId);
+  };
+
+  if (!isLoaded) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-[#080816] text-white">
+        <LoaderCircleIcon className="w-12 h-12 animate-spin text-[#827DBE]" />
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-[#080816] text-[#D1C4CE] selection:bg-[#5654A6] font-sans antialiased overflow-x-hidden">
+    <div
+      className={`min-h-screen bg-[#080816] text-[#D1C4CE] selection:bg-[#5654A6] font-sans antialiased overflow-x-hidden ${isDarkMode ? "dark" : ""}`}
+    >
       <div className="fixed inset-0 pointer-events-none z-0">
         <div className="absolute top-[-10%] left-[-10%] w-[70%] md:w-[50%] h-[50%] bg-[#5654A6]/20 rounded-full blur-[80px] md:blur-[140px] animate-pulse"></div>
         <div
@@ -102,8 +153,20 @@ function App() {
         </SignedOut>
 
         <SignedIn>
-          <div className="pt-16 h-screen flex flex-col w-full overflow-hidden bg-[#080816]">
-            <Chat />
+          <div className="pt-16 h-screen flex w-full overflow-hidden bg-[#080816]">
+            <Sidebar
+              userId={user?.id || ""}
+              chatId={chatId}
+              userName={user?.fullName || user?.firstName || "User"}
+              onNewChat={handleNewChat}
+              onSelectChat={handleSelectChat}
+              isDarkMode={isDarkMode}
+              setIsDarkMode={setIsDarkMode}
+            />
+            <Chat
+              chatId={chatId}
+              userId={user?.id || ""}
+            />
           </div>
         </SignedIn>
       </main>

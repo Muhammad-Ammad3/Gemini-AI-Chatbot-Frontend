@@ -5,7 +5,12 @@ import bot from "../assets/bot.png";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus as darkTheme } from "react-syntax-highlighter/dist/esm/styles/prism";
 
-export default function Message({ message }: { message: any }) {
+export default function Message({
+  message,
+}: {
+  message: any;
+  isDarkMode: boolean;
+}) {
   const [copied, setCopied] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
 
@@ -60,7 +65,7 @@ export default function Message({ message }: { message: any }) {
     <div
       className={`flex w-full ${
         isAI ? "justify-start" : "justify-end"
-      } px-2 md:px-4 mb-4 md:mb-6`}
+      } px-2 md:px-4 mb-4 md:mb-6 transition-colors duration-300`}
     >
       <div className="flex flex-col gap-2 w-full max-w-[85%] sm:max-w-[75%] md:max-w-xl lg:max-w-2xl">
         <div
@@ -71,7 +76,7 @@ export default function Message({ message }: { message: any }) {
           {isAI ? (
             <>
               <div className="w-8 h-8 md:w-9 md:h-9 rounded-full bg-linear-to-tr p-0.5 shrink-0">
-                <div className="h-full w-full rounded-full bg-[#080816] flex items-center justify-center overflow-hidden">
+                <div className="h-full w-full rounded-full bg-zinc-100 dark:bg-[#080816] flex items-center justify-center overflow-hidden">
                   <img
                     src={bot}
                     alt="AI Avatar"
@@ -79,7 +84,7 @@ export default function Message({ message }: { message: any }) {
                   />
                 </div>
               </div>
-              <span className="text-[9px] md:text-[10px] text-[#D1C4CE]/30 font-medium">
+              <span className="text-[9px] md:text-[10px] text-zinc-400 dark:text-[#D1C4CE]/30 font-medium">
                 {new Date(message.createdAt).toLocaleTimeString([], {
                   hour: "2-digit",
                   minute: "2-digit",
@@ -88,13 +93,13 @@ export default function Message({ message }: { message: any }) {
             </>
           ) : (
             <>
-              <span className="text-[9px] md:text-[10px] text-[#D1C4CE]/30 font-medium">
+              <span className="text-[9px] md:text-[10px] text-zinc-400 dark:text-[#D1C4CE]/30 font-medium">
                 {new Date(message.createdAt).toLocaleTimeString([], {
                   hour: "2-digit",
                   minute: "2-digit",
                 })}
               </span>
-              <div className="w-8 h-8 md:w-9 md:h-9 rounded-full bg-[#827DBE] flex items-center justify-center shrink-0 shadow-lg shadow-[#C96D50]/20">
+              <div className="w-8 h-8 md:w-9 md:h-9 rounded-full bg-[#7974c3] dark:bg-[#827DBE] flex items-center justify-center shrink-0 shadow-lg shadow-zinc-300/50 dark:shadow-[#C96D50]/20">
                 <User className="w-4 h-4 md:w-5 md:h-5 text-white" />
               </div>
             </>
@@ -104,18 +109,20 @@ export default function Message({ message }: { message: any }) {
         {/* Bubble Style */}
         <div
           className={`
-          p-3 md:p-4 rounded-2xl backdrop-blur-xl border shadow-xl transition-all
+          p-3 md:p-4 rounded-2xl backdrop-blur-xl border shadow-xl transition-all duration-300
           ${
             isAI
-              ? "bg-[#3C3B5E]/40 border-white/10 text-[#D1C4CE] rounded-bl-sm"
-              : "bg-linear-to-r bg-[#827DBE] text-white rounded-br-sm border-white/20"
+              ? "bg-zinc-50 dark:bg-[#3C3B5E]/40 border-zinc-200 dark:border-white/10 text-zinc-800 dark:text-[#D1C4CE] rounded-bl-sm"
+              : "bg-[#7974c3] dark:bg-[#827DBE] text-white rounded-br-sm border-transparent dark:border-white/20"
           }
         `}
         >
           {/* Markdown Content */}
           <div
-            className={`prose prose-invert prose-xs md:prose-sm max-w-none wrap-break-words overflow-x-hidden ${
-              isAI ? "prose-p:text-[#D1C4CE]/90" : "prose-p:text-white"
+            className={`prose dark:prose-invert prose-xs md:prose-sm max-w-none wrap-break-words overflow-x-hidden ${
+              isAI
+                ? "prose-p:text-zinc-700 dark:prose-p:text-[#D1C4CE]/90 prose-strong:text-zinc-900 dark:prose-strong:text-white"
+                : "prose-p:text-white"
             }`}
           >
             <ReactMarkdown
@@ -123,14 +130,14 @@ export default function Message({ message }: { message: any }) {
                 code({ inline, className, children, ...props }: any) {
                   const match = /language-(\w+)/.exec(className || "");
                   return !inline && match ? (
-                    <div className="my-2 md:my-3 rounded-lg md:rounded-xl overflow-hidden border border-white/10 text-[11px] md:text-sm shadow-2xl">
+                    <div className="my-2 md:my-3 rounded-lg md:rounded-xl overflow-hidden border border-zinc-200 dark:border-white/10 text-[11px] md:text-sm shadow-2xl">
                       <SyntaxHighlighter
                         style={darkTheme}
                         language={match[1]}
                         PreTag="div"
                         customStyle={{
                           background: "#080816",
-                          padding: "0.75rem md:1rem",
+                          padding: "0.75rem 1rem",
                           margin: 0,
                         }}
                       >
@@ -139,10 +146,10 @@ export default function Message({ message }: { message: any }) {
                     </div>
                   ) : (
                     <code
-                      {...props} 
+                      {...props}
                       className={`${
                         isAI
-                          ? "bg-[#080816]/50 text-[#827DBE]"
+                          ? "bg-zinc-200 dark:bg-[#080816]/50 text-indigo-600 dark:text-[#827DBE]"
                           : "bg-black/20 text-white"
                       } px-1 py-0.5 rounded text-[10px] md:text-xs break-all font-mono`}
                     >
@@ -153,7 +160,7 @@ export default function Message({ message }: { message: any }) {
                 table({ children }) {
                   return (
                     <div className="overflow-x-auto w-full my-2">
-                      <table className="min-w-full border-collapse border border-white/10">
+                      <table className="min-w-full border-collapse border border-zinc-300 dark:border-white/10">
                         {children}
                       </table>
                     </div>
@@ -166,21 +173,23 @@ export default function Message({ message }: { message: any }) {
           </div>
 
           {/* Actions */}
-          <div className="flex items-center gap-3 mt-3 border-t border-white/5 pt-2">
+          <div className="flex items-center gap-3 mt-3 border-t border-zinc-200 dark:border-white/5 pt-2">
             <button
               onClick={handleCopy}
               className={`p-2 md:p-1.5 rounded-full transition active:scale-90 ${
                 isAI
-                  ? "bg-white/5 hover:bg-white/10"
-                  : "bg-black/10 hover:bg-black/20"
+                  ? "bg-zinc-200 dark:bg-white/5 hover:bg-zinc-300 dark:hover:bg-white/10 text-zinc-600 dark:text-[#D1C4CE]"
+                  : "bg-black/10 hover:bg-black/20 text-white"
               }`}
             >
               {copied ? (
-                <Check className="w-3.5 h-3.5 md:w-3 md:h-3 text-green-400" />
+                <Check className="w-3.5 h-3.5 md:w-3 md:h-3 text-green-500 dark:text-green-400" />
               ) : (
                 <Copy
                   className={`w-3.5 h-3.5 md:w-3 md:h-3 ${
-                    isAI ? "text-[#827DBE]" : "text-white/70"
+                    isAI
+                      ? "text-indigo-600 dark:text-[#827DBE]"
+                      : "text-white/70"
                   }`}
                 />
               )}
@@ -189,13 +198,13 @@ export default function Message({ message }: { message: any }) {
             {isAI && (
               <button
                 onClick={handleSpeak}
-                className="p-2 md:p-1.5 rounded-full bg-white/5 hover:bg-white/10 transition active:scale-90"
+                className="p-2 md:p-1.5 rounded-full bg-zinc-200 dark:bg-white/5 hover:bg-zinc-300 dark:hover:bg-white/10 transition active:scale-90"
               >
                 <Volume2
                   className={`w-3.5 h-3.5 md:w-3 md:h-3 ${
                     isSpeaking
                       ? "text-[#C96D50] animate-pulse"
-                      : "text-[#D1C4CE]/60"
+                      : "text-zinc-600 dark:text-[#D1C4CE]/60"
                   }`}
                 />
               </button>

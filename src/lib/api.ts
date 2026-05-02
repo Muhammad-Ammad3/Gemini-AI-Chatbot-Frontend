@@ -1,11 +1,10 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 export const api = {
-
   getMessages: async (userId: string) => {
-    const res = await fetch(`${API_URL}/api/messages?userId=${userId}`)
-    if (!res.ok) throw new Error('Failed to fetch messages')
-    return res.json()
+    const res = await fetch(`${API_URL}/api/messages?userId=${userId}`);
+    if (!res.ok) throw new Error('Failed to fetch messages');
+    return res.json();
   },
 
   sendMessage: async (userId: string, role: string, content: string) => {
@@ -13,33 +12,51 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId, role, content })
-    })
-    return res.json()
+    });
+    return res.json();
   },
 
-  getAIStream: async (userId: string, content: string, onChunk: (text: string) => void) => {
+  getSessions: async (userId: string) => {
+    const res = await fetch(`${API_URL}/api/chat/sessions?userId=${userId}`);
+    if (!res.ok) throw new Error('Failed to fetch sessions');
+    return res.json();
+  },
+
+  getAIStream: async (userId: string, content: string, chatId: string, onChunk: (text: string) => void) => {
     const res = await fetch(`${API_URL}/api/chat/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, message: content })
-    })
+      body: JSON.stringify({ userId, message: content, chatId }) 
+    });
 
-    if (!res.ok) throw new Error('Stream failed')
+    if (!res.ok) throw new Error('Stream failed');
 
-    const reader = res.body?.getReader()
-    const decoder = new TextDecoder()
-    let fullText = ''
+    const reader = res.body?.getReader();
+    const decoder = new TextDecoder();
+    let fullText = '';
 
     if (reader) {
       while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
+        const { done, value } = await reader.read();
+        if (done) break;
         
-        const chunk = decoder.decode(value, { stream: true })
-        fullText += chunk
-        onChunk(fullText) 
+        const chunk = decoder.decode(value, { stream: true });
+        fullText += chunk;
+        onChunk(fullText); 
       }
     }
-    return fullText
+    return fullText;
+  },
+
+  deleteSession: async (chatId: string) => {
+    const res = await fetch(`${API_URL}/api/chat/sessions/${chatId}`, {
+      method: 'DELETE'
+    });
+    
+    if (!res.ok) {
+      throw new Error('Failed to delete session');
+    }
+    
+    return res.json();
   }
-}
+};
